@@ -1,0 +1,47 @@
+pragma solidity ^0.5.0;
+
+contract Ask {
+    
+    struct Ticket {
+        uint ticketNumber;
+        uint price;
+        uint status;
+    }
+    
+    struct User {
+        uint userId;
+        bool registered;
+    }
+    
+    mapping (address => User) users;
+    mapping (uint => Ticket) tickets;
+     
+    function register(address _address, uint _id) public {
+        require(_id >= 0);
+        
+        User storage user = users[_address];
+        user.userId = _id;
+        user.registered = true;
+    }
+    
+    function unregister(address _address) public {
+        User storage user = users[_address];
+        user.registered = false;
+    }
+    
+    function request(uint ticketNumber) public {
+        Ticket storage ticket = tickets[ticketNumber];
+        ticket.status = 1;
+    }
+    
+    function approveReject(address payable _address, uint status, uint amountDue, uint ticketNumber) public {
+        Ticket storage ticket = tickets[ticketNumber];
+        ticket.status = status;
+        settlePayment(_address, amountDue);
+    }
+    
+    function settlePayment(address payable _address, uint amountDue) public {
+        address payable user = _address;
+        user.transfer(amountDue);
+    }
+}

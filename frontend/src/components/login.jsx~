@@ -1,0 +1,26 @@
+import React, { Component } from 'react';
+
+import "bootstrap/dist/css/bootstrap.min.css";
+
+export default class Login extends Component {
+    
+    render() {
+        return (
+	    <table>
+	      <tbody>
+		<tr>
+		  <td><label htmlFor="username" className="col-form-label">Username: </label></td>
+		  <td><input type="text" placeholder="Username" id="username" className="form-control" onChange={(text) => this.props.onUsernameChange(text)} /></td>		  
+		</tr>
+		<tr>
+		  <td><label htmlFor="password" className="col-form-label">Password: </label></td>
+		  <td><input type="password" placeholder="Password" id="password" className="form-control" onChange={(text) => this.props.onPasswordChange(text)} /></td>
+		</tr>
+		<tr>
+		  <td><button className="btn btn-primary btn-sm m-2" onClick={() => this.props.onLogin()}>Login</button></td>
+		</tr>
+	      </tbody>
+	    </table>
+        )
+    }
+}

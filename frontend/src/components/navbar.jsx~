@@ -1,0 +1,58 @@
+import React, { Component } from 'react';
+
+import "bootstrap/dist/css/bootstrap.min.css";
+
+class NavBar extends Component {
+    state = {
+	displayMenu: false
+    };
+
+    showDropdownMenu = (event) => {
+	event.preventDefault();
+	this.setState({ displayMenu: true }, () => {
+	    document.addEventListener('click', this.hideDropdownMenu);
+	});
+    }
+
+    hideDropdownMenu = () => {
+	this.setState({ displayMenu: false }, () => {
+	    document.removeEventListener('click', this.hideDropdownMenu);
+	});	
+    }
+    
+    render() {
+	return (
+	    <nav className="navbar navbar-expand-lg navbar-light bg-light">
+	      <a className="navbar-brand" onClick={() => this.props.onPageChange("Buy")} href="#">Consortium</a>
+	      <div className="collapse navbar-collapse">
+		<ul className="navbar-nav nav mr-auto">
+		  <li className="navbar-item active">
+		    <a className="nav-link" onClick={() => this.props.onPageChange("Buy")} href="#">Buy</a>
+		  </li>
+		  <li className="navbar-item">
+		    <a className="nav-link" onClick={() => this.props.onPageChange("Sell")} href="#">Sell</a>
+		  </li>
+		</ul>
+		<div className="navbar-nav nav ml-auto">
+		  <div className="dropdown">
+		    <a className="nav-link dropdown-toggle" onClick={this.showDropdownMenu} href="#">{this.props.props.username}: {this.props.props.user.wallet}</a>
+		    { this.state.displayMenu ? (
+			<ul>
+			  { this.props.props.username === "Chairperson" ? (
+			      <React.Fragment>
+				<li className="nav-link dropdown-item"><a onClick={() => this.props.onPageChange("Register")} href="#">Register user</a></li>
+				<li className="nav-link dropdown-item"><a onClick={() => this.props.onPageChange("Unregister")} href="#">Unregister user</a></li>
+			      </React.Fragment>
+			  ) : (null)}
+			    <li className="nav-link dropdown-item"><a onClick={() => this.props.onPageChange("Login")} href="#">Logout</a></li>
+			    </ul>
+		    ) : (null)}
+	    </div>
+		</div>
+		</div>
+		</nav>	
+	);
+    }
+};
+
+export default NavBar;

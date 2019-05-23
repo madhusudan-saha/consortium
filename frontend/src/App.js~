@@ -1,0 +1,306 @@
+import React, { Component } from "react";
+
+import "bootstrap/dist/css/bootstrap.min.css";
+
+import Login from "./components/login";
+import ProductList from "./components/productList";
+import SellProduct from "./components/sellProduct";
+import NavBar from "./components/navbar";
+import Register from "./components/register";
+import Product from "./components/product";
+import Transaction from "./components/transaction";
+import Unregister from "./components/unregister";
+
+import axios from 'axios';
+
+class App extends Component {
+
+    state = {
+	page: "Login",
+	username: "",
+	password: "",
+	registerUserId: 0,
+	registerUsername: "",
+	registerPassword: "",
+	registerWallet: 0,
+	user: {},
+	productsToBuy: [],
+	transactions: [],
+	deposit: 0,
+	unregisterUsername: ""
+    };
+
+    getProductsTransactions= () => {
+	axios.get('http://localhost:4000/consortium/products')
+	    .then(products => {
+		this.setState({productsToBuy: products.data});
+		
+		axios.get('http://localhost:4000/consortium/transactions')
+		    .then(trans => {
+			this.setState({transactions: trans.data});
+		    })
+		    .catch(function (error){
+			console.log(error);
+		    })		
+	    })
+	    .catch(function (error){
+                console.log(error);
+	    })	
+    }
+
+    handleUsername = (text) => {
+	this.setState({username: text.target.value})
+    }
+    
+    handlePassword = (text) => {
+	this.setState({password: text.target.value})
+    }
+
+    handleLogin = () => {
+	let obj = {};
+	obj.username = this.state.username;
+	obj.password = this.state.password;
+	
+
+	axios({
+	    method: 'post',
+	    url: 'http://localhost:4000/consortium/login',
+	    data: obj,
+	    config: { headers: {'Content-Type': 'application/json' }}
+	})
+	    .then(res => {
+		this.setState({page: "Buy", user: res.data});
+	    })
+	    .catch(function (error){
+                console.log(error);
+	    })
+    }
+
+    handleRegisterUserId = (text) => {
+	this.setState({registerUserId: text.target.value})
+    }
+
+    handleRegisterUsername = (text) => {
+	this.setState({registerUsername: text.target.value})
+    }
+    
+    handleRegisterPassword = (text) => {
+	this.setState({registerPassword: text.target.value})
+    }
+
+    handleRegisterWallet = (text) => {
+	this.setState({registerWallet: text.target.value})
+    }    
+
+    handleRegister = () => {
+	let obj = {};
+	obj.userId = this.state.registerUserId;
+	obj.username = this.state.registerUsername;
+	obj.password = this.state.registerPassword;
+	obj.wallet = this.state.registerWallet;
+	obj.productsOwned = [];
+
+	axios({
+	    method: 'post',
+	    url: 'http://localhost:4000/consortium/register_user',
+	    data: obj,
+	    config: { headers: {'Content-Type': 'application/json' }}
+	})
+	    .then(res => {
+		this.setState({page: "Buy"});
+	    })
+	    .catch(function (error){
+                console.log(error);
+	    })
+    }
+    
+    handleUnregisterUsername = (text) => {
+	this.setState({unregisterUsername: text.target.value})
+    }
+
+    handleUnregister = () => {
+	let obj = {};
+	obj.username = this.state.unregisterUsername;
+
+	axios({
+	    method: 'post',
+	    url: 'http://localhost:4000/consortium/unregister_user',
+	    data: obj,
+	    config: { headers: {'Content-Type': 'application/json' }}
+	})
+	    .then(res => {
+		this.setState({page: "Buy"});
+	    })
+	    .catch(function (error){
+                console.log(error);
+	    })
+    }
+    
+    handlePageChange = (page) => {
+	this.setState({page: page});
+    }
+
+    handleDeposit = (text) => {
+	this.setState({deposit: text.target.value})
+    }
+    
+    depositMoney = (username, deposit) => {
+	let obj = {};
+	obj.username = username;
+	obj.deposit = deposit;
+	
+	axios({
+	    method: 'post',
+	    url: 'http://localhost:4000/consortium/deposit',
+	    data: obj,
+	    config: { headers: {'Content-Type': 'application/json' }}
+	})
+	    .then(res => {
+		this.setState({user: res.data});
+	    })
+	    .catch(function (error){
+                console.log(error);
+	    })	
+    }
+
+    buyProduct = (product, username) => {
+	let obj = {};
+	obj.username = username;
+	obj.productId = product.productId;
+	obj.name = product.name;
+	obj.price = product.price;
+	obj.description = product.description;
+	obj.owner = product.owner;
+	
+	axios({
+	    method: 'post',
+	    url: 'http://localhost:4000/consortium/buy',
+	    data: obj,
+	    config: { headers: {'Content-Type': 'application/json' }}
+	})
+	    .then(res => {
+		this.setState(prevState => {
+		    const productsToBuy = prevState.productsToBuy.filter(p => p.productId !== product.productId);
+		    return { productsToBuy };
+		});
+		
+		let trans = {};
+		trans.buyer = username;
+		trans.seller = product.owner;
+		trans.amount = product.price;
+		trans.productId = product.productId;
+		let t = [...this.state.transactions];
+		t.push(trans);
+		this.setState({transactions: t});
+	    })
+	    .catch(function (error){
+                console.log(error);
+	    })	
+    }
+
+    listProducts = (username, page, buyProduct) => {
+        return this.state.productsToBuy.map(function(currentProduct, i){
+	    if(username !== currentProduct.owner) {
+		return <Product
+		page={page}
+		product={currentProduct}
+		username={username}
+		key={i}
+		buyProduct={buyProduct} />;
+	    }
+        })
+    }
+
+    settlePayment = (transaction) => {
+	if(this.state.user.wallet >= transaction.amount) {
+	    let obj = {};
+	    obj.buyer = transaction.buyer;
+	    obj.seller = transaction.seller;
+	    obj.amount = transaction.amount;
+	    obj.productId = transaction.productId;
+	    
+	    axios({
+		method: 'post',
+		url: 'http://localhost:4000/consortium/settle_payment',
+		data: obj,
+		config: { headers: {'Content-Type': 'application/json' }}
+	    })
+		.then(res => {
+		    let t = [...this.state.transactions];
+		    var index = t.indexOf(transaction)
+		    if (index !== -1) {
+			t.splice(index, 1);
+			this.setState({transactions: t});
+		    }
+		    
+		    let user = this.state.user;
+		    user.wallet = user.wallet - Number(transaction.amount);
+		    this.setState({user: user});
+		})
+		.catch(function (error){
+                    console.log(error);
+		})
+	}
+    }
+
+    listTransactions = (username, settlePayment) => {
+        return this.state.transactions.map(function(currentTransaction, i){
+	    if(username === currentTransaction.buyer) {
+		return <Transaction
+		transaction={currentTransaction}
+		key={i}
+		settlePayment={settlePayment} />;
+	    }
+        })
+    }
+    
+    render() {	
+	return (
+		<main className="container">
+		{(this.state.page === "Buy" || this.state.page === "Sell") ? (<NavBar
+									      props={this.state}
+									      onPageChange={this.handlePageChange}
+									      />) : null}
+	    
+	    {this.state.page === "Login" ? (<Login
+					    props={this.state}
+					    onUsernameChange={this.handleUsername}
+					    onPasswordChange={this.handlePassword}
+					    onLogin={this.handleLogin}
+					    />) : null}
+	    
+	    {this.state.page === "Register" ? (<Register
+					       props={this.state}
+					       onRegisterUserIdChange={this.handleRegisterUserId}
+					       onRegisterUsernameChange={this.handleRegisterUsername}
+					       onRegisterPasswordChange={this.handleRegisterPassword}
+					       onRegisterWalletChange={this.handleRegisterWallet}
+					       onRegister={this.handleRegister}
+					       />) : null}
+
+	    {this.state.page === "Unregister" ? (<Unregister
+					       props={this.state}
+					       onUnregisterUsernameChange={this.handleUnregisterUsername}
+					       onUnregister={this.handleUnregister}
+					       />) : null}
+
+	    {this.state.page === "Buy" ? (<ProductList
+					  props={this.state}
+					  handleDeposit={this.handleDeposit}
+					  depositMoney={this.depositMoney}
+					  buyProduct={this.buyProduct}
+					  listProducts={this.listProducts}
+					  settlePayment={this.settlePayment}
+					  listTransactions={this.listTransactions}
+					  getProductsTransactions={this.getProductsTransactions}
+					  />) : null}
+	    
+	    {this.state.page === "Sell" ? (<SellProduct
+					   props={this.state}
+					   />) : null}
+	    </main>
+	);
+    }
+}
+
+export default App;

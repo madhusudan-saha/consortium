@@ -1,0 +1,18 @@
+import React, { Component } from 'react';
+
+class Transaction extends Component {
+        
+    render() {
+	return (
+	    <tr>
+	      <td>You owe </td>
+	      <td>{this.props.transaction.seller}</td>
+	      <td>{this.props.transaction.amount}</td>
+	      <td>{this.props.transaction.productId}</td>
+	      <td><button onClick={() => this.props.settlePayment(this.props.transaction)}>Settle</button></td>
+	    </tr>
+	)
+    }
+}
+
+export default Transaction;

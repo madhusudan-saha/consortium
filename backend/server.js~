@@ -1,0 +1,357 @@
+const express = require('express');
+const app = express();
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const mongoose = require('mongoose');
+const fs = require('fs');
+const Web3 = require('web3');
+
+const routes = express.Router();
+const PORT = 4000;
+let User = require('./src/models/user');
+let Product = require('./src/models/product');
+let Transaction = require('./src/models/transaction');
+
+app.use(cors());
+app.use(bodyParser.json());
+mongoose.connect('mongodb://127.0.0.1:27017/consortium', { useNewUrlParser: true });
+const connection = mongoose.connection;
+const usersColl = connection.collection('users');
+const productsColl = connection.collection('products');
+const transactionsColl = connection.collection('transactions');
+
+const web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
+bytecode = fs.readFileSync('./contracts/Consortium_sol_Consortium.bin').toString()
+abi = JSON.parse(fs.readFileSync('./contracts/Consortium_sol_Consortium.abi').toString())
+const contract = new web3.eth.Contract(abi);
+
+let deployedContract;
+let addresses;
+let count;
+
+connection.once('open', function() {
+    console.log("MongoDB database connection established successfully");
+})
+
+routes.route('/users').get(function(req, res) {
+    usersColl.find().toArray(function(err, users) {
+        if (err) {
+            console.log(err);
+        } else {
+            res.send(JSON.stringify(users));
+        }
+    });
+});
+
+routes.route('/products').get(function(req, res) {
+    productsColl.find().toArray(function(err, products) {
+        if (err) {
+            console.log(err);
+        } else {
+	    res.send(JSON.stringify(products));
+        }
+    });
+});
+
+routes.route('/transactions').get(function(req, res) {
+    transactionsColl.find().toArray(function(err, transactions) {
+        if (err) {
+            console.log(err);
+        } else {
+	    res.send(JSON.stringify(transactions));
+        }
+    });
+});
+
+routes.route('/buy').post(function(req, res) {
+    let buyer = new User();
+    let p = new Product();
+    let t = new Transaction();
+    buyer.username = req.body.username;
+    p.productId = Number(req.body.productId);
+    p.name = req.body.name;
+    p.price = Number(req.body.price);
+    p.description = req.body.description;
+    p.owner = req.body.owner;
+
+    usersColl.findOne({'username': buyer.username}, function(error, b) {
+	if(b) {
+	    buyer.password = b.password;
+	    buyer.wallet = Number(b.wallet);
+	    buyer.productsOwned = b.productsOwned;
+	    
+	    usersColl.findOne({'username': p.owner}, function(err, seller) {
+		if (seller) {
+		    if(buyer.productsOwned === null) {
+			buyer.productsOwned = [];
+		    }
+		    buyer.productsOwned.push(Number(p.productId));
+		    p.owner = buyer.username;
+
+		    seller.productsOwned = seller.productsOwned.filter(function( id ) {
+			return id !== Number(p.productId);
+		    });
+
+		    t.buyer = buyer.username;
+		    t.seller = seller.username;
+		    t.amount = Number(p.price);
+		    t.productId = Number(p.productId);
+		    
+		    deployedContract.methods.buy(p.productId).send({from: b.address}).then(function(txHash){
+			console.log("Buy: "+JSON.stringify(txHash));
+			
+			usersColl.updateOne({"username": buyer.username}, {$set: {"productsOwned": buyer.productsOwned}})
+			    .then(buyer => {
+				usersColl.updateOne({"username": seller.username}, {$set: {"productsOwned": seller.productsOwned}})
+				    .then(seller => {
+					productsColl.updateOne({"productId": p.productId}, {$set: {"owner": p.owner}})
+					    .then(p => {
+						transactionsColl.insertOne(t)
+						    .then(r => {
+							res.json('Transaction recorded!');
+						    })
+						    .catch(err => {
+							res.status(400).send("Transaction failed!");
+						    });	    	    					    
+					    })
+					    .catch(err => {
+						res.status(400).send("Update not possible!");
+					    });	    	      
+				    })
+				    .catch(err => {
+					res.status(400).send('Seller update failed!');
+				    });  
+			    })
+			    .catch(err => {
+				res.status(400).send('Buyer update failed!');
+			    });
+		    });
+		}
+	    });
+	}
+    });
+});
+
+routes.route('/sell').post(function(req, res) {
+    usersColl.findOne({'username': req.body.owner}, function(err, user) {
+        if (user) {
+            let p = new Product();
+	    p.productId = Number(req.body.productId);
+	    p.name = req.body.name;
+	    p.price = Number(req.body.price);
+	    p.description = req.body.description;
+	    p.owner = req.body.owner;
+
+	    if(user.productsOwned === null) {
+		user.productsOwned = [];
+	    }
+	    user.productsOwned.push(Number(p.productId));
+	    
+	    deployedContract.methods.sell(p.productId, p.price).send({from: user.address}).then(function(txHash) {
+		console.log("Sell: "+JSON.stringify(txHash));
+		
+		usersColl.updateOne({"username": user.username}, {$set: user})
+		    .then(user => {
+			productsColl.insertOne(p)
+			    .then(p => {
+				res.json('Product added!');
+			    })
+			    .catch(err => {
+				res.status(400).send("Insert not possible!");
+			    });	    		    
+		    })
+		    .catch(err => {
+			res.status(400).send('User update failed!');
+		    }); 
+	    });
+	}
+    });    
+});
+
+routes.route('/register_user').post(function(req, res) {
+    if(count < 10) {
+	usersColl.findOne({'username': req.body.username}, function(err, user) {
+            if (user) {
+		res.send("User already exists!");
+	    }
+            else {
+		let u = new User();
+		u.userId = Number(req.body.userId);
+		u.username = req.body.username;
+		u.password = req.body.password;
+		u.wallet = Number(req.body.wallet);
+		u.productsOwned = req.body.productsOwned;
+		u.address = adresses[count];
+		u.registered = "true";
+		count++;
+
+		deployedContract.methods.register(u.address, u.userId, u.wallet).send({from: addresses[0]}).then(function(txHash){
+		    console.log("Register: "+JSON.stringify(txHash));
+		    
+		    usersColl.insertOne(u)
+			.then(u => {
+			    res.json('User registered!');
+			})
+			.catch(err => {
+			    res.status(400).send("Insert not possible!");
+			});
+		});
+	    }
+	});
+    }
+    else {
+	res.json('Only 10 users allowed!');
+    }
+});
+
+routes.route('/login').post(function(req, res) {
+    usersColl.findOne({'username': req.body.username,
+		       'password': req.body.password}, function(err, user) {
+			   if(user) {
+			       res.json(user);
+			   }
+			   else {
+			       res.send("Login failed.");
+			   }
+		       });
+});
+
+routes.route('/deposit').post(function(req, res) {
+    usersColl.findOne({'username': req.body.username}, function(err, user) {
+	if(user) {
+	    user.wallet = user.wallet + Number(req.body.deposit);
+	    
+	    deployedContract.methods.addDeposit(Number(req.body.deposit)).send({from: user.address}).then(function(txHash){		
+		console.log("Deposit: "+JSON.stringify(txHash));
+		
+		usersColl.updateOne({"username": user.username}, {$set: user})
+		    .then(u => {
+			res.json(user);
+		    })
+		    .catch(err => {
+			res.send('Add deposit failed!');
+		    });				  
+	    
+	    });
+	}
+    });
+});
+
+routes.route('/settle_payment').post(function(req, res) {
+    Transaction.findOneAndRemove({'buyer': req.body.buyer, 'seller': req.body.seller, 'amount': req.body.amount, 'productId': req.body.productId}, function(err) {
+	if(!err) {
+	    usersColl.findOne({'username': req.body.buyer}, function(err, b) {
+		if(b) {
+		    usersColl.findOne({'username': req.body.seller}, function(err, s) {
+			if(s) {
+			    deployedContract.methods.settlePayment(s.address, Number(req.body.amount)).send({from: b.address}).then(function(txHash){
+				console.log("Settle payment: "+JSON.stringify(txHash));
+				
+				usersColl.updateOne({"username": b.username}, {$set: {"wallet": (b.wallet - Number(req.body.amount))}})
+				    .then(user => {
+					usersColl.updateOne({"username": s.username}, {$set: {"wallet": (s.wallet + Number(req.body.amount))}})
+					    .then(u => {
+						res.json('Settle payment successful!');
+					    })
+					    .catch(err => {
+						res.status(400).send('Seller wallet update failed!');
+					    });	    
+				    })
+			    	    .catch(err => {
+					res.status(400).send('Buyer wallet update failed!');
+				    });		    
+			    });
+			}
+		    })
+		}
+	    });
+	}
+	else {
+	    res.send("Settle payment failed!");
+	}
+    });
+});
+
+routes.route('/unregister_user').post(function(req, res) {
+    usersColl.findOne({'username': req.body.username}, function(err, user) {
+        if (user) {
+	    deployedContract.methods.unregister(user.address).send({from: addresses[0]}).then(function(txHash){
+		console.log("Unregister: "+JSON.stringify(txHash));
+		
+		usersColl.updateOne({"username": user.username}, {$set: {"registered": "false"}})
+		    .then(u => {
+			res.json('User unregistered!');
+		    })
+		    .catch(err => {
+			res.status(400).send("Update not possible!");
+		    });
+	    });
+	}
+    });
+});
+
+function onInsert(err, docs) {
+    if (err) {
+	//console.log(err);
+    } else {
+        //console.log('%d documents were successfully stored.', docs.length);
+    }
+}
+
+web3.eth.getAccounts().then((accounts) => {
+    addresses = accounts;
+    
+    contract.deploy({data: bytecode, arguments: []}).send({from: accounts[0], gas: 4700000}).then((result) => {
+	deployedContract = result;
+	
+	let dummyUsers = [
+	    {"userId": 1, "username": "Chairperson", "password": "xyz", "wallet": 1000, "productsOwned": [], "address": addresses[0], "registered": "true"},
+	    {"userId": 2, "username": "Mr. X", "password": "xyz", "wallet": 500, "productsOwned": [1, 4], "address": addresses[1], "registered": "true"},
+	    {"userId": 3, "username": "Mr. Y", "password": "xyz", "wallet": 500, "productsOwned": [2, 5], "address": addresses[2], "registered": "true"},
+	    {"userId": 4, "username": "Mr. Z", "password": "xyz", "wallet": 500, "productsOwned": [3], "address": addresses[3], "registered": "true"}
+	]
+	count = 4;
+	let dummyProducts = [
+	    {"productId": 1, "name": "Table", "price": 1000, "description": "Dining table", "owner": "Mr. X"},
+	    {"productId": 2, "name": "Chair", "price": 500, "description": "Chair", "owner": "Mr. Y"},
+	    {"productId": 3, "name": "Fan", "price": 300, "description": "Table fan", "owner": "Mr. Z"},
+	    {"productId": 4, "name": "Couch", "price": 1500, "description": "Couch", "owner": "Mr. X"},
+	    {"productId": 5, "name": "Bean bag", "price": 1200, "description": "Bean bag", "owner": "Mr. Y"}
+	]
+	
+	deployedContract.methods.register(addresses[1], 2, 500).send({from: addresses[0]}).then(function(rHash2){
+	    console.log("Register: "+JSON.stringify(rHash2));
+	    deployedContract.methods.register(addresses[2], 3, 500).send({from: addresses[0]}).then(function(rHash3){
+		console.log("Register: "+JSON.stringify(rHash3));
+		deployedContract.methods.register(addresses[3], 4, 500).send({from: addresses[0]}).then(function(rHash4){
+		    console.log("Register: "+JSON.stringify(rHash4));
+		    
+		    deployedContract.methods.sell(1, 1000).send({from: addresses[1]}).then(function(sHash1){
+			console.log("Sell: "+JSON.stringify(sHash1));
+			deployedContract.methods.sell(2, 500).send({from: addresses[2]}).then(function(sHash2){
+			    console.log("Sell: "+JSON.stringify(sHash2));			
+			    deployedContract.methods.sell(3, 300).send({from: addresses[3]}).then(function(sHash3){
+				console.log("Sell: "+JSON.stringify(sHash3));			
+				deployedContract.methods.sell(4, 1500).send({from: addresses[1]}).then(function(sHash4){
+				    console.log("Sell: "+JSON.stringify(sHash4));			
+				    deployedContract.methods.sell(5, 1200).send({from: addresses[2]}).then(function(sHash5){
+					console.log("Sell: "+JSON.stringify(sHash5));
+					
+					usersColl.insert(dummyUsers, onInsert);
+					productsColl.insert(dummyProducts, onInsert);
+					
+					app.use('/consortium', routes);
+					app.listen(PORT, function() {
+					    console.log("Server is running on Port: " + PORT);
+					});
+				    });	
+				});
+			    });
+			});
+		    });
+		});
+	    });
+	});	
+    });    
+});
+
